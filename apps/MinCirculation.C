@@ -226,11 +226,11 @@ void refine(graph& GA, const double epsilon) {
                             uintT neighbour = GA.V[i].getInNeighbor(j);
                             
                             //length fucntion: l = ceil(c_p/epsilon) + 1
-                            double c_p = - GA.getOutInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
+                            double c_p = - GA.getInInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
                             intE length = ceil(c_p/epsilon) + 1;
                             
                             cout << "got new backward residual edge: " << neighbour << "<-" 
-                                    << i << " length: " << length << endl;
+                                    << i << " length: " << length << " c_p:" << c_p << endl;
                             
                             if (ShortestDistance[neighbour] > ShortestDistance[i] + length) {
                                 ShortestDistance[neighbour] = ShortestDistance[i] + length;
