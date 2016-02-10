@@ -1,26 +1,4 @@
-// This code is part of the project "Ligra: A Lightweight Graph Processing
-// Framework for Shared Memory", presented at Principles and Practice of 
-// Parallel Programming, 2013.
-// Copyright (c) 2013 Julian Shun and Guy Blelloch
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights (to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to
-// permit persons to whom the Software is furnished to do so, subject to
-// the following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-// NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-// LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-// OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
-// WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+// Alvis Logins (c) 2015
 #define WEIGHTED 1
 #define DEBUG
 #include <vector>
@@ -55,7 +33,7 @@ bool isOutAdmissible(graph& GA, uintT node, uintT outEdge) {
 bool isInverseAdmissible(graph& GA, uintT node, uintT inEdge) {
     uintT neighbor = GA.V[node].getInNeighbor(inEdge);
     intE c_p = -GA.getInInfo(node,inEdge).weight + GA.p[neighbor] - GA.p[node];
-    intE residual = GA.getInInfo(node,inEdge).flow - GA.getInInfo(node,inEdge).lower;
+    intE residual = GA.getInInfo(node,inEdge).flow - GA.getInInfo(node,inEdge).lower; //unit case!
     cout << node << "<-" << neighbor << " admissible: " << (c_p < 0 && residual > 0)
         << "(c_p = " << c_p << ", residual: " << residual << ")\n";
     return (c_p < 0 && residual > 0);
@@ -158,10 +136,23 @@ void refine(graph& GA, const double epsilon) {
         for (uintT j = 0; j < GA.V[i].getOutDegree(); j++) {
             uintT neighbour = GA.V[i].getOutNeighbor(j);
             intE c_p = GA.getOutInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
-            if (c_p < 0) {
+            if (isOutAdmissible(GA,i,j)) {
                 GA.getOutInfo(i,j).flow = GA.getOutInfo(i,j).capacity;
             }
             cout << "c_p("<< i << "," << neighbour << ") = " << c_p << endl;
+        }
+    }
+    //iterate through inverted edges
+    cout << "Inverted:" << endl;
+    for (uintT i = 0; i < GA.n; i++)
+    {
+        for (uintT j = 0; j < GA.V[i].inDegree; j++) {
+            uintT neighbour = GA.V[i].getInNeighbor(j);
+            intE c_p = GA.getOutInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
+            if (isInverseAdmissible(GA,i,j)) {
+                GA.getInInfo(i,j).flow = GA.getInInfo(i,j).lower;
+            }
+            cout << "c_p("<< neighbour << "," << i << ") = " << c_p << endl;
         }
     }
     
@@ -190,7 +181,9 @@ void refine(graph& GA, const double epsilon) {
         uintE length_to_deficit;
         while (!Frontier.isEmpty()) {
             vertexSubset nextIterSubset(GA.n);
+            nextIterSubset.m = 0;
             nextIterSubset.toDense();
+            bool gotDeficit = false;
             for (uintT i = 0; i < GA.n; i++) {
                 //if vertex in the active subset
                 if (Frontier.d[i]) {
@@ -203,6 +196,7 @@ void refine(graph& GA, const double epsilon) {
                     if (deficits.d[i]) {
                         nextIterSubset.del();
                         length_to_deficit = ShortestDistance[i];
+                        gotDeficit = true;
                         break;
                     }
                     
@@ -210,9 +204,15 @@ void refine(graph& GA, const double epsilon) {
                     for (uintT j = 0; j < GA.V[i].outDegree; j++) {
                         if (GA.getOutInfo(i,j).flow < GA.getOutInfo(i,j).capacity) {
                             uintT neighbour = GA.V[i].getOutNeighbor(j);
-                            cout << "got new forward residual edge: " << i << "->" << neighbour << endl;
-                            if (ShortestDistance[neighbour] > ShortestDistance[i] + 1) {
-                                ShortestDistance[neighbour] = ShortestDistance[i] + 1;
+                            
+                            //length fucntion: l = ceil(c_p/epsilon) + 1
+                            double c_p = GA.getOutInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
+                            intE length = ceil(c_p/epsilon) + 1;
+                            
+                            cout << "got new forward residual edge: " 
+                                    << i << "->" << neighbour << " length: " << length << endl;
+                            if (ShortestDistance[neighbour] > ShortestDistance[i] + length) {
+                                ShortestDistance[neighbour] = ShortestDistance[i] + length;
                                 if (!nextIterSubset.d[neighbour]) {
                                     nextIterSubset.d[neighbour] = true;
                                     nextIterSubset.m++;
@@ -220,13 +220,20 @@ void refine(graph& GA, const double epsilon) {
                             }
                         }
                     }
+                    //inverted edges (see G_f condition)
                     for (uintT j = 0; j < GA.V[i].inDegree; j++) {
                         if (GA.getInInfo(i,j).flow > GA.getInInfo(i,j).lower) {
                             uintT neighbour = GA.V[i].getInNeighbor(j);
-                            cout << "got new backward residual edge: " << i << "->" 
-                                    << j << "[original <-]" << endl;
-                            if (ShortestDistance[neighbour] > ShortestDistance[i] + 1) {
-                                ShortestDistance[neighbour] = ShortestDistance[i] + 1;
+                            
+                            //length fucntion: l = ceil(c_p/epsilon) + 1
+                            double c_p = - GA.getOutInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
+                            intE length = ceil(c_p/epsilon) + 1;
+                            
+                            cout << "got new backward residual edge: " << neighbour << "<-" 
+                                    << i << " length: " << length << endl;
+                            
+                            if (ShortestDistance[neighbour] > ShortestDistance[i] + length) {
+                                ShortestDistance[neighbour] = ShortestDistance[i] + length;
                                 if (!nextIterSubset.d[neighbour]) {
                                     nextIterSubset.d[neighbour] = true;
                                     nextIterSubset.m++;
@@ -236,6 +243,7 @@ void refine(graph& GA, const double epsilon) {
                     }
                 }
             }
+            if (gotDeficit) break;
             Frontier.del();
             Frontier = nextIterSubset;
         }
@@ -251,6 +259,10 @@ void refine(graph& GA, const double epsilon) {
                 GA.p[i] += (length_to_deficit - ShortestDistance[i])*epsilon;
             }
         }
+        
+        free(ShortestDistance);
+        
+        
         cout << "new potentials: " << endl;
         printGraph(GA);
         
@@ -313,20 +325,23 @@ void refine(graph& GA, const double epsilon) {
                                 GA.V[nextNode].getInNeighbor(j) != curNode)) {
                             j++;
                         }
-                        if (j == GA.V[curNode].inDegree) {
+                        if (j == GA.V[nextNode].inDegree) {
                             cout << "Error: missing edge in raising flows" << endl;
                             exit(1);
                         }
+                        GA.getInInfo(nextNode,j).flow--;
+                    } else {
+                        GA.getOutInfo(nextNode,j).flow++;
                     }
-                    //now we have ID of an edge
-                    GA.getInInfo(curNode,j).flow++;
+                    
                     curNode = nextNode;
                 }
                 cout << "Iteration finished. Final excess: " << curNode << endl;
                 printGraph(GA);
             }
-            cout << endl;
         }
+        
+        free(blockingSearch);
     
         //recalculate excesses and deficits
         calculateExcesses(GA,excesses,deficits);
@@ -379,8 +394,7 @@ void Compute(graph& GA, commandLine P) {
         epsilon = epsilon / 2.;
     }
     
+    printGraph(GA);
     cout << "Done." << endl;
-    
-    free(p);
 }
 
