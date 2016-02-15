@@ -6,6 +6,7 @@
 using namespace std;
 
 #include "ligra.h"
+#include <queue>
 
 struct PR_F {
 };
@@ -24,7 +25,7 @@ struct PR_Vertex_F {
 
 bool isOutAdmissible(graph& GA, uintT node, uintT outEdge) {
     uintT neighbor = GA.V[node].getOutNeighbor(outEdge);
-    intE c_p = GA.getOutInfo(node,outEdge).weight + GA.p[neighbor] - GA.p[node];
+    double c_p = GA.getOutInfo(node,outEdge).weight + GA.p[neighbor] - GA.p[node];
     intE residual = GA.getOutInfo(node,outEdge).capacity - GA.getOutInfo(node,outEdge).flow;
     cout << node << "->" << neighbor << " admissible: " << (c_p < 0 && residual > 0)
             << "(c_p = " << c_p << ", residual: " << residual << ")\n";
@@ -32,32 +33,52 @@ bool isOutAdmissible(graph& GA, uintT node, uintT outEdge) {
 }
 bool isInverseAdmissible(graph& GA, uintT node, uintT inEdge) {
     uintT neighbor = GA.V[node].getInNeighbor(inEdge);
-    intE c_p = -GA.getInInfo(node,inEdge).weight + GA.p[neighbor] - GA.p[node];
+    double c_p = -GA.getInInfo(node,inEdge).weight + GA.p[neighbor] - GA.p[node];
     intE residual = GA.getInInfo(node,inEdge).flow - GA.getInInfo(node,inEdge).lower; //unit case!
     cout << node << "<-" << neighbor << " admissible: " << (c_p < 0 && residual > 0)
         << "(c_p = " << c_p << ", residual: " << residual << ")\n";
     return (c_p < 0 && residual > 0);
 }
 
-void dfs(graph& GA, uintT* blockingFlow, uintT nodeId) {
+void dfs(graph& GA, uintT* blockingFlow, uintT nodeId,
+        const vertexSubset& excesses, const vertexSubset& deficits) {
     cout << "  DFS " << nodeId << ":\n";
-    for (uintT i = 0; i < GA.V[nodeId].outDegree; i++) {
-        //for each out edge check if it is admissible
-        //if so - update distance and run dfs
-        uintT neighbor = GA.V[nodeId].getOutNeighbor(i);
-        if (isOutAdmissible(GA,nodeId,i) && blockingFlow[neighbor] == INT_MAX) {
-            blockingFlow[neighbor] = nodeId;
-            dfs(GA, blockingFlow, neighbor);
+    
+    queue<uintT> node_queue;
+    node_queue.push(nodeId);
+    
+    while(!node_queue.empty()) {
+        uintT node = node_queue.front();
+        node_queue.pop();
+        
+        for (uintT i = 0; i < GA.V[node].outDegree; i++) {
+            //for each out edge check if it is admissible
+            //if so - update distance and run dfs
+            uintT neighbor = GA.V[node].getOutNeighbor(i);
+            if (isOutAdmissible(GA,node,i) && blockingFlow[neighbor] == INT_MAX
+                    && !excesses.d[neighbor]) {
+                blockingFlow[neighbor] = node;
+                node_queue.push(neighbor);
+                
+                if (deficits.d[neighbor]) {
+                    return;
+                }
+            }
         }
-    }
-    //the same for inverse edges
-    for (uintT i = 0; i < GA.V[nodeId].inDegree; i++) {
-        //for each out edge check if it is admissible
-        //if so - update distance and run dfs
-        uintT neighbor = GA.V[nodeId].getInNeighbor(i);
-        if (isInverseAdmissible(GA,nodeId,i) && blockingFlow[neighbor] == INT_MAX) {
-            blockingFlow[neighbor] = nodeId;
-            dfs(GA, blockingFlow, neighbor);
+        //the same for inverse edges
+        for (uintT i = 0; i < GA.V[node].inDegree; i++) {
+            //for each out edge check if it is admissible
+            //if so - update distance and run dfs
+            uintT neighbor = GA.V[node].getInNeighbor(i);
+            if (isInverseAdmissible(GA,node,i) && blockingFlow[neighbor] == INT_MAX
+                    && !excesses.d[neighbor]) {
+                blockingFlow[neighbor] = node;
+                node_queue.push(neighbor);
+                
+                if (deficits.d[neighbor]) {
+                    return;
+                }
+            }
         }
     }
 }
@@ -125,6 +146,196 @@ void printGraph(graph GA) {
     }
 }
 
+uintT raise_potentials(graph& GA, const double epsilon, 
+    const vertexSubset& excesses, const vertexSubset& deficits) {
+    
+    cout << "Raise potentials..." << endl;
+
+    //calculate shortest distances
+    intE* ShortestDistance = newA(intE,GA.n);
+    vertexSubset Frontier(GA.n);
+    Frontier.toDense();
+    for(uintT i = 0; i < GA.n; i++) Frontier.d[i] = excesses.d[i];
+    Frontier.m = excesses.m;
+
+    for (uintT i = 0; i < GA.n; i++) {
+        ShortestDistance[i] = INT_MAX;
+    }
+
+    //calculate shortest path in Residual (!) graph
+    uintE length_to_deficit;
+    while (!Frontier.isEmpty()) {
+        vertexSubset nextIterSubset(GA.n);
+        nextIterSubset.m = 0;
+        nextIterSubset.toDense();
+        bool gotDeficit = false;
+        for (uintT i = 0; i < GA.n; i++) {
+            //if vertex in the active subset
+            if (Frontier.d[i]) {
+                //if source - zero distance by definition
+                if (excesses.d[i]) {
+                    ShortestDistance[i] = 0;
+                }
+
+                //if a vertex is a deficit - terminate
+                if (deficits.d[i]) {
+                    nextIterSubset.del();
+                    length_to_deficit = ShortestDistance[i];
+                    gotDeficit = true;
+                    break;
+                }
+
+                //iterate through residual edges to both directions!
+                for (uintT j = 0; j < GA.V[i].outDegree; j++) {
+                    if (GA.getOutInfo(i,j).flow < GA.getOutInfo(i,j).capacity) {
+                        uintT neighbour = GA.V[i].getOutNeighbor(j);
+
+                        //length fucntion: l = ceil(c_p/epsilon) + 1
+                        double c_p = GA.getOutInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
+                        intE length = ceil(c_p/epsilon) + 1;
+                        if (length < 0) {
+                            cout << "error: negative length" << endl;
+                            exit(1);
+                        }
+
+                        cout << "got new forward residual edge: " 
+                                << i << "->" << neighbour << " length: " << length << endl;
+                        if (ShortestDistance[neighbour] > ShortestDistance[i] + length) {
+                            ShortestDistance[neighbour] = ShortestDistance[i] + length;
+                            if (!nextIterSubset.d[neighbour]) {
+                                nextIterSubset.d[neighbour] = true;
+                                nextIterSubset.m++;
+                            }
+                        }
+                    }
+                }
+                //inverted edges (see G_f condition)
+                for (uintT j = 0; j < GA.V[i].inDegree; j++) {
+                    if (GA.getInInfo(i,j).flow > GA.getInInfo(i,j).lower) {
+                        uintT neighbour = GA.V[i].getInNeighbor(j);
+
+                        //length function: l = ceil(c_p/epsilon) + 1
+                        double c_p = - GA.getInInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
+                        intE length = ceil(c_p/epsilon) + 1;
+                        if (length < 0) {
+                            cout << "error: negative length" << endl;
+                            exit(1);
+                        }
+
+                        cout << "got new backward residual edge: " << neighbour << "<-" 
+                                << i << " length: " << length << " c_p:" << c_p << endl;
+
+                        if (ShortestDistance[neighbour] > ShortestDistance[i] + length) {
+                            ShortestDistance[neighbour] = ShortestDistance[i] + length;
+                            if (!nextIterSubset.d[neighbour]) {
+                                nextIterSubset.d[neighbour] = true;
+                                nextIterSubset.m++;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (gotDeficit) break;
+        Frontier.del();
+        Frontier = nextIterSubset;
+    }
+    cout << "Shortest path done. MaxLength = " << length_to_deficit << endl;
+    for (int i = 0; i < GA.n; i++) {
+        cout << i << ":" << ShortestDistance[i] << " ";
+    }
+    cout << endl;
+
+    //raise potentials
+    for (uintT i = 0; i < GA.n; i++) {
+        if (ShortestDistance[i] < length_to_deficit) {
+            GA.p[i] += (length_to_deficit - ShortestDistance[i])*epsilon;
+        }
+    }
+
+    free(ShortestDistance);
+}
+
+void raise_flows(graph& GA, const double epsilon, 
+    const vertexSubset& excesses, const vertexSubset& deficits) {
+    //calculate blocking flow via depth-first search in admissible graph
+    // depth-first search: creating an array of pointers to parents
+    // can be extended to the case of non-unit capacity by saving 
+    // a pointer to a parent together with total flow
+    //terminate when a deficit reached
+    uintT* blockingSearch = newA(uintT, GA.n);
+    for (uintT i = 0; i < GA.n; i++) blockingSearch[i] = INT_MAX;
+    for (uintT i = 0; i < GA.n; i++) {
+        if (excesses.d[i]) {
+            dfs(GA, blockingSearch, i, excesses, deficits);
+        }
+    }
+    cout << "Blocking flow array: ";
+    for (int i = 0; i < GA.n; i++) {
+        cout << i << ":" << blockingSearch[i] << " ";
+    }
+    cout << endl;
+    cout << "blocking flow done." << endl;
+
+    cout << "Paths: \n";
+    //raise flow: back propagation from each deficit
+    for (uintT i = 0; i < GA.n; i++) {
+        if (deficits.d[i] && blockingSearch[i] < INT_MAX) {
+            uintT curNode = i;
+            while (excesses.d[curNode] != true) {
+                cout << curNode << "<-";
+                curNode = blockingSearch[curNode];
+            }
+            cout << curNode << endl;
+        }
+    }
+
+    //now raise flows
+    cout << "Raising flows... Path:" << endl;
+    for (uintT i = 0; i < GA.n; i++) {
+        //iteration only through deficits only
+        if (deficits.d[i] && blockingSearch[i] < INT_MAX) {
+            uintT curNode = i;
+            uintT nextNode;
+            //go back through edges until excess is found (back propagation))
+            //works only in case of unit flows possible
+            while (excesses.d[curNode] != true) {
+                cout << "Node: " << curNode << ":" << endl;
+                nextNode = blockingSearch[curNode];
+                //we don't know what edge is correct - so iterate 
+                //through accessible input and inverse input
+                int j = 0;
+                while (j < GA.V[nextNode].outDegree &&
+                        (!isOutAdmissible(GA, nextNode, j) ||
+                        GA.V[nextNode].getOutNeighbor(j) != curNode)) {
+                    j++;
+                }
+                if (j == GA.V[nextNode].outDegree) {
+                    j = 0;
+                    while (j < GA.V[nextNode].inDegree &&
+                            (!isInverseAdmissible(GA, nextNode, j) ||
+                            GA.V[nextNode].getInNeighbor(j) != curNode)) {
+                        j++;
+                    }
+                    if (j == GA.V[nextNode].inDegree) {
+                        cout << "Error: missing edge in raising flows" << endl;
+                        exit(1);
+                    }
+                    GA.getInInfo(nextNode, j).flow--;
+                } else {
+                    GA.getOutInfo(nextNode, j).flow++;
+                }
+
+                curNode = nextNode;
+            }
+            cout << "Iteration finished. Final excess: " << curNode << endl;
+            printGraph(GA);
+        }
+    }
+        
+    free(blockingSearch);
+}
+
 void refine(graph& GA, const double epsilon) {
     
     cout << "New iteration: e = " << epsilon << endl;
@@ -135,7 +346,7 @@ void refine(graph& GA, const double epsilon) {
     {
         for (uintT j = 0; j < GA.V[i].getOutDegree(); j++) {
             uintT neighbour = GA.V[i].getOutNeighbor(j);
-            intE c_p = GA.getOutInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
+            double c_p = GA.getOutInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
             if (isOutAdmissible(GA,i,j)) {
                 GA.getOutInfo(i,j).flow = GA.getOutInfo(i,j).capacity;
             }
@@ -148,7 +359,7 @@ void refine(graph& GA, const double epsilon) {
     {
         for (uintT j = 0; j < GA.V[i].inDegree; j++) {
             uintT neighbour = GA.V[i].getInNeighbor(j);
-            intE c_p = GA.getOutInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
+            double c_p = GA.getInInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
             if (isInverseAdmissible(GA,i,j)) {
                 GA.getInInfo(i,j).flow = GA.getInInfo(i,j).lower;
             }
@@ -164,184 +375,8 @@ void refine(graph& GA, const double epsilon) {
     
     while (excesses.isEmpty() == false) {
         
-        cout << "Raise potentials..." << endl;
-        
-        //calculate shortest distances
-        uintE* ShortestDistance = newA(uintT,GA.n);
-        vertexSubset Frontier(GA.n);
-        Frontier.toDense();
-        for(uintT i = 0; i < GA.n; i++) Frontier.d[i] = excesses.d[i];
-        Frontier.m = excesses.m;
-        
-        for (uintT i = 0; i < GA.n; i++) {
-            ShortestDistance[i] = INT_MAX;
-        }
-        
-        //calculate shortest path in Residual (!) graph
-        uintE length_to_deficit;
-        while (!Frontier.isEmpty()) {
-            vertexSubset nextIterSubset(GA.n);
-            nextIterSubset.m = 0;
-            nextIterSubset.toDense();
-            bool gotDeficit = false;
-            for (uintT i = 0; i < GA.n; i++) {
-                //if vertex in the active subset
-                if (Frontier.d[i]) {
-                    //if source - zero distance by definition
-                    if (excesses.d[i]) {
-                        ShortestDistance[i] = 0;
-                    }
-                    
-                    //if a vertex is a deficit - terminate
-                    if (deficits.d[i]) {
-                        nextIterSubset.del();
-                        length_to_deficit = ShortestDistance[i];
-                        gotDeficit = true;
-                        break;
-                    }
-                    
-                    //iterate through residual edges to both directions!
-                    for (uintT j = 0; j < GA.V[i].outDegree; j++) {
-                        if (GA.getOutInfo(i,j).flow < GA.getOutInfo(i,j).capacity) {
-                            uintT neighbour = GA.V[i].getOutNeighbor(j);
-                            
-                            //length fucntion: l = ceil(c_p/epsilon) + 1
-                            double c_p = GA.getOutInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
-                            intE length = ceil(c_p/epsilon) + 1;
-                            
-                            cout << "got new forward residual edge: " 
-                                    << i << "->" << neighbour << " length: " << length << endl;
-                            if (ShortestDistance[neighbour] > ShortestDistance[i] + length) {
-                                ShortestDistance[neighbour] = ShortestDistance[i] + length;
-                                if (!nextIterSubset.d[neighbour]) {
-                                    nextIterSubset.d[neighbour] = true;
-                                    nextIterSubset.m++;
-                                }
-                            }
-                        }
-                    }
-                    //inverted edges (see G_f condition)
-                    for (uintT j = 0; j < GA.V[i].inDegree; j++) {
-                        if (GA.getInInfo(i,j).flow > GA.getInInfo(i,j).lower) {
-                            uintT neighbour = GA.V[i].getInNeighbor(j);
-                            
-                            //length fucntion: l = ceil(c_p/epsilon) + 1
-                            double c_p = - GA.getInInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
-                            intE length = ceil(c_p/epsilon) + 1;
-                            
-                            cout << "got new backward residual edge: " << neighbour << "<-" 
-                                    << i << " length: " << length << " c_p:" << c_p << endl;
-                            
-                            if (ShortestDistance[neighbour] > ShortestDistance[i] + length) {
-                                ShortestDistance[neighbour] = ShortestDistance[i] + length;
-                                if (!nextIterSubset.d[neighbour]) {
-                                    nextIterSubset.d[neighbour] = true;
-                                    nextIterSubset.m++;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if (gotDeficit) break;
-            Frontier.del();
-            Frontier = nextIterSubset;
-        }
-        cout << "Shortest path done. MaxLength = " << length_to_deficit << endl;
-        for (int i = 0; i < GA.n; i++) {
-            cout << i << ":" << ShortestDistance[i] << " ";
-        }
-        cout << endl;
-        
-        //raise potentials
-        for (uintT i = 0; i < GA.n; i++) {
-            if (ShortestDistance[i] < length_to_deficit) {
-                GA.p[i] += (length_to_deficit - ShortestDistance[i])*epsilon;
-            }
-        }
-        
-        free(ShortestDistance);
-        
-        
-        cout << "new potentials: " << endl;
-        printGraph(GA);
-        
-        //calculate blocking flow via depth-first search in admissible graph
-        // depth-first search: creating an array of pointers to parents
-        // can be extended to the case of non-unit capacity by saving 
-        // a pointer to a parent together with total flow
-        //terminate when a deficit reached
-        uintT* blockingSearch = newA(uintT, GA.n);
-        for (uintT i = 0; i < GA.n; i++)    blockingSearch[i] = INT_MAX;
-        for (uintT i = 0; i < GA.n; i++) {
-            if (excesses.d[i]) {
-                dfs(GA,blockingSearch,i);
-            }
-        }
-        cout << "Blocking flow array: ";
-        for (int i = 0; i < GA.n; i++) {
-            cout << i << ":" << blockingSearch[i] << " ";
-        }
-        cout << endl;
-        cout << "blocking flow done." << endl;
-        
-        cout << "Paths: \n";
-        //raise flow: back propagation from each deficit
-        for (uintT i = 0; i < GA.n; i++) {
-            if (deficits.d[i] && blockingSearch[i] < INT_MAX) {
-                uintT curNode = i;
-                while (excesses.d[curNode] != true) {
-                    cout << curNode << "<-";
-                    curNode = blockingSearch[curNode];
-                }
-                cout << curNode << endl;
-            }
-        }
-        
-        //now raise flows
-        cout << "Raising flows... Path:" << endl;
-        for (uintT i = 0; i < GA.n; i++) {
-            //iteration only through deficits only
-            if (deficits.d[i] && blockingSearch[i] < INT_MAX) {
-                uintT curNode = i;
-                uintT nextNode;
-                //go back through edges until excess is found (back propagation))
-                //works only in case of unit flows possible
-                while (excesses.d[curNode] != true) {
-                    cout << "Node: " << curNode << ":" << endl;
-                    nextNode = blockingSearch[curNode];
-                    //we don't know what edge is correct - so iterate 
-                    //through accessible input and inverse input
-                    int j = 0;
-                    while (j < GA.V[nextNode].outDegree &&
-                            (!isOutAdmissible(GA,nextNode,j) || 
-                            GA.V[nextNode].getOutNeighbor(j) != curNode)) {
-                        j++;
-                    }
-                    if (j == GA.V[nextNode].outDegree) {
-                        j = 0;
-                        while (j < GA.V[nextNode].inDegree &&
-                                (!isInverseAdmissible(GA,nextNode,j) || 
-                                GA.V[nextNode].getInNeighbor(j) != curNode)) {
-                            j++;
-                        }
-                        if (j == GA.V[nextNode].inDegree) {
-                            cout << "Error: missing edge in raising flows" << endl;
-                            exit(1);
-                        }
-                        GA.getInInfo(nextNode,j).flow--;
-                    } else {
-                        GA.getOutInfo(nextNode,j).flow++;
-                    }
-                    
-                    curNode = nextNode;
-                }
-                cout << "Iteration finished. Final excess: " << curNode << endl;
-                printGraph(GA);
-            }
-        }
-        
-        free(blockingSearch);
+        uintE target_id = raise_potentials(GA,epsilon,excesses,deficits);
+        raise_flows(GA,epsilon,excesses, deficits);
     
         //recalculate excesses and deficits
         calculateExcesses(GA,excesses,deficits);
@@ -367,7 +402,7 @@ void Compute(graph& GA, commandLine P) {
             GA.E[i].lower = 0;
     }}
     
-    intE* p = newA(intE, n);
+    double* p = newA(double, n);
     intE* supply = newA(intE, n);
     {parallel_for(long i = 0; i < n; i++) {
             p[i] = 0;

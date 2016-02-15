@@ -64,7 +64,7 @@ struct graph {
   edgeInfo *E;
   long n;
   long m;
-  intE* p;
+  double* p;
   intE* supply;
 #ifndef WEIGHTED
   uintE* allocatedInplace, * inEdges;
