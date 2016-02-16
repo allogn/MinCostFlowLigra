@@ -31,7 +31,7 @@ ALL= MinCirculation
 
 all: $(ALL)
 
-% : %.C $(COMMON)
+% : %.c $(COMMON)
 	$(PCC) $(INC) $(PCFLAGS) -o $@ $< 
 
 clean :

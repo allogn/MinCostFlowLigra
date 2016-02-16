@@ -1,12 +1,6 @@
 // Alvis Logins (c) 2015
-#define WEIGHTED 1
-#define DEBUG
-#include <vector>
 
-using namespace std;
-
-#include "ligra.h"
-#include <queue>
+#include "MinCirculation.h"
 
 struct PR_F {
 };
@@ -27,7 +21,8 @@ bool isOutAdmissible(graph& GA, uintT node, uintT outEdge) {
     uintT neighbor = GA.V[node].getOutNeighbor(outEdge);
     double c_p = GA.getOutInfo(node,outEdge).weight + GA.p[neighbor] - GA.p[node];
     intE residual = GA.getOutInfo(node,outEdge).capacity - GA.getOutInfo(node,outEdge).flow;
-    cout << node << "->" << neighbor << " admissible: " << (c_p < 0 && residual > 0)
+    if (testing)
+        if (testing) log_file << node << "->" << neighbor << " admissible: " << (c_p < 0 && residual > 0)
             << "(c_p = " << c_p << ", residual: " << residual << ")\n";
     return (c_p < 0 && residual > 0);
 }
@@ -35,14 +30,14 @@ bool isInverseAdmissible(graph& GA, uintT node, uintT inEdge) {
     uintT neighbor = GA.V[node].getInNeighbor(inEdge);
     double c_p = -GA.getInInfo(node,inEdge).weight + GA.p[neighbor] - GA.p[node];
     intE residual = GA.getInInfo(node,inEdge).flow - GA.getInInfo(node,inEdge).lower; //unit case!
-    cout << node << "<-" << neighbor << " admissible: " << (c_p < 0 && residual > 0)
+    if (testing) log_file << node << "<-" << neighbor << " admissible: " << (c_p < 0 && residual > 0)
         << "(c_p = " << c_p << ", residual: " << residual << ")\n";
     return (c_p < 0 && residual > 0);
 }
 
 void dfs(graph& GA, uintT* blockingFlow, uintT nodeId,
         const vertexSubset& excesses, const vertexSubset& deficits) {
-    cout << "  DFS " << nodeId << ":\n";
+    if (testing) log_file << "  DFS " << nodeId << ":\n";
     
     queue<uintT> node_queue;
     node_queue.push(nodeId);
@@ -84,7 +79,7 @@ void dfs(graph& GA, uintT* blockingFlow, uintT nodeId,
 }
 
 void calculateExcesses(graph& GA, vertexSubset& excesses, vertexSubset& deficits) {
-    cout << "Calculate excesses..." << endl;
+    if (testing) log_file << "Calculate excesses..." << endl;
     
     uintT totalExcesses = 0;
     uintT totalDeficits = 0;
@@ -112,32 +107,32 @@ void calculateExcesses(graph& GA, vertexSubset& excesses, vertexSubset& deficits
     excesses.m = totalExcesses;
     deficits.m = totalDeficits;
     
-    cout << "excesses: " ;
+    if (testing) log_file << "excesses: " ;
     for (uintT i = 0; i < GA.n; i++) {
-        cout << i << ":" << excesses.d[i] << " ";
+        if (testing) log_file << i << ":" << excesses.d[i] << " ";
     }
-    cout << endl;
-    cout << "deficits: " ;
+    if (testing) log_file << endl;
+    if (testing) log_file << "deficits: " ;
     for (uintT i = 0; i < GA.n; i++) {
-        cout << i << ":" << deficits.d[i] << " ";
+        if (testing) log_file << i << ":" << deficits.d[i] << " ";
     }
-    cout << endl;
+    if (testing) log_file << endl;
 }
 
 void printGraph(graph GA) {
     for (uintE i = 0; i < GA.n; i++) {
-        cout << "#" << i << " (" << GA.p[i] << ", supply: " << GA.supply[i] << "):\t\n";
-        cout << "    " << "OUT:\n";
+        log_file << "#" << i << " (" << GA.p[i] << ", supply: " << GA.supply[i] << "):\t\n";
+        log_file << "    " << "OUT:\n";
         for (uintE j = 0; j < GA.V[i].outDegree; j++) {
-            cout << "        " << GA.V[i].getOutNeighbor(j) 
+            log_file << "        " << GA.V[i].getOutNeighbor(j) 
                     << " (w: " << GA.getOutInfo(i,j).weight << "; "
                     << " f: " << GA.getOutInfo(i,j).flow << "; "
                     << " c: " << GA.getOutInfo(i,j).capacity << "; "
                     << " l: " << GA.getOutInfo(i,j).lower << ")\n";
         }
-        cout << "    " << "IN:\n";
+        log_file << "    " << "IN:\n";
         for (uintE j = 0; j < GA.V[i].inDegree; j++) {
-            cout << "        " << GA.V[i].getInNeighbor(j) 
+            log_file << "        " << GA.V[i].getInNeighbor(j) 
                     << " (w: " << GA.getInInfo(i,j).weight << "; "
                     << " f: " << GA.getInInfo(i,j).flow << "; "
                     << " c: " << GA.getInInfo(i,j).capacity << "; "
@@ -149,7 +144,7 @@ void printGraph(graph GA) {
 uintT raise_potentials(graph& GA, const double epsilon, 
     const vertexSubset& excesses, const vertexSubset& deficits) {
     
-    cout << "Raise potentials..." << endl;
+    if (testing) log_file << "Raise potentials..." << endl;
 
     //calculate shortest distances
     intE* ShortestDistance = newA(intE,GA.n);
@@ -198,7 +193,7 @@ uintT raise_potentials(graph& GA, const double epsilon,
                             exit(1);
                         }
 
-                        cout << "got new forward residual edge: " 
+                        if (testing) log_file << "got new forward residual edge: " 
                                 << i << "->" << neighbour << " length: " << length << endl;
                         if (ShortestDistance[neighbour] > ShortestDistance[i] + length) {
                             ShortestDistance[neighbour] = ShortestDistance[i] + length;
@@ -222,7 +217,7 @@ uintT raise_potentials(graph& GA, const double epsilon,
                             exit(1);
                         }
 
-                        cout << "got new backward residual edge: " << neighbour << "<-" 
+                        if (testing) log_file << "got new backward residual edge: " << neighbour << "<-" 
                                 << i << " length: " << length << " c_p:" << c_p << endl;
 
                         if (ShortestDistance[neighbour] > ShortestDistance[i] + length) {
@@ -240,11 +235,11 @@ uintT raise_potentials(graph& GA, const double epsilon,
         Frontier.del();
         Frontier = nextIterSubset;
     }
-    cout << "Shortest path done. MaxLength = " << length_to_deficit << endl;
+    if (testing) log_file << "Shortest path done. MaxLength = " << length_to_deficit << endl;
     for (int i = 0; i < GA.n; i++) {
-        cout << i << ":" << ShortestDistance[i] << " ";
+        if (testing) log_file << i << ":" << ShortestDistance[i] << " ";
     }
-    cout << endl;
+    if (testing) log_file << endl;
 
     //raise potentials
     for (uintT i = 0; i < GA.n; i++) {
@@ -270,28 +265,28 @@ void raise_flows(graph& GA, const double epsilon,
             dfs(GA, blockingSearch, i, excesses, deficits);
         }
     }
-    cout << "Blocking flow array: ";
+    if (testing) log_file << "Blocking flow array: ";
     for (int i = 0; i < GA.n; i++) {
-        cout << i << ":" << blockingSearch[i] << " ";
+        if (testing) log_file << i << ":" << blockingSearch[i] << " ";
     }
-    cout << endl;
-    cout << "blocking flow done." << endl;
+    if (testing) log_file << endl;
+    if (testing) log_file << "blocking flow done." << endl;
 
-    cout << "Paths: \n";
+    if (testing) log_file << "Paths: \n";
     //raise flow: back propagation from each deficit
     for (uintT i = 0; i < GA.n; i++) {
         if (deficits.d[i] && blockingSearch[i] < INT_MAX) {
             uintT curNode = i;
             while (excesses.d[curNode] != true) {
-                cout << curNode << "<-";
+                if (testing) log_file << curNode << "<-";
                 curNode = blockingSearch[curNode];
             }
-            cout << curNode << endl;
+            if (testing) log_file << curNode << endl;
         }
     }
 
     //now raise flows
-    cout << "Raising flows... Path:" << endl;
+    if (testing) log_file << "Raising flows... Path:" << endl;
     for (uintT i = 0; i < GA.n; i++) {
         //iteration only through deficits only
         if (deficits.d[i] && blockingSearch[i] < INT_MAX) {
@@ -300,7 +295,7 @@ void raise_flows(graph& GA, const double epsilon,
             //go back through edges until excess is found (back propagation))
             //works only in case of unit flows possible
             while (excesses.d[curNode] != true) {
-                cout << "Node: " << curNode << ":" << endl;
+                if (testing) log_file << "Node: " << curNode << ":" << endl;
                 nextNode = blockingSearch[curNode];
                 //we don't know what edge is correct - so iterate 
                 //through accessible input and inverse input
@@ -318,7 +313,7 @@ void raise_flows(graph& GA, const double epsilon,
                         j++;
                     }
                     if (j == GA.V[nextNode].inDegree) {
-                        cout << "Error: missing edge in raising flows" << endl;
+                        if (testing) log_file << "Error: missing edge in raising flows" << endl;
                         exit(1);
                     }
                     GA.getInInfo(nextNode, j).flow--;
@@ -328,8 +323,10 @@ void raise_flows(graph& GA, const double epsilon,
 
                 curNode = nextNode;
             }
-            cout << "Iteration finished. Final excess: " << curNode << endl;
-            printGraph(GA);
+            if (testing) {
+                log_file << "Iteration finished. Final excess: " << curNode << endl;
+                printGraph(GA);
+            }
         }
     }
         
@@ -338,8 +335,10 @@ void raise_flows(graph& GA, const double epsilon,
 
 void refine(graph& GA, const double epsilon) {
     
-    cout << "New iteration: e = " << epsilon << endl;
-    printGraph(GA);
+    if (testing) {
+        log_file << "New iteration: e = " << epsilon << endl;
+        printGraph(GA);
+    }
     
     //loop through arcs, saturate those with c_p less than 0 and add excesses
     for (uintT i = 0; i < GA.n; i++)
@@ -350,11 +349,11 @@ void refine(graph& GA, const double epsilon) {
             if (isOutAdmissible(GA,i,j)) {
                 GA.getOutInfo(i,j).flow = GA.getOutInfo(i,j).capacity;
             }
-            cout << "c_p("<< i << "," << neighbour << ") = " << c_p << endl;
+            if (testing) log_file << "c_p("<< i << "," << neighbour << ") = " << c_p << endl;
         }
     }
     //iterate through inverted edges
-    cout << "Inverted:" << endl;
+    if (testing) log_file << "Inverted:" << endl;
     for (uintT i = 0; i < GA.n; i++)
     {
         for (uintT j = 0; j < GA.V[i].inDegree; j++) {
@@ -363,7 +362,7 @@ void refine(graph& GA, const double epsilon) {
             if (isInverseAdmissible(GA,i,j)) {
                 GA.getInInfo(i,j).flow = GA.getInInfo(i,j).lower;
             }
-            cout << "c_p("<< neighbour << "," << i << ") = " << c_p << endl;
+            if (testing) log_file << "c_p("<< neighbour << "," << i << ") = " << c_p << endl;
         }
     }
     
@@ -389,6 +388,13 @@ void refine(graph& GA, const double epsilon) {
 void Compute(graph& GA, commandLine P) {
     
     long source = P.getOptionLongValue("-s",0);
+    char* iFile = P.getArgument(0);
+    
+    testing = P.getOptionIntValue("-test",0);
+    string log_filename = P.getOptionValue("-log","log.txt");
+    if (testing) {
+        log_file.open(log_filename.c_str());
+    }
     
     long n = GA.n;
     long m = GA.m;
@@ -429,7 +435,28 @@ void Compute(graph& GA, commandLine P) {
         epsilon = epsilon / 2.;
     }
     
-    printGraph(GA);
+    if (testing) printGraph(GA);
+    bool checked = true;
+    if (testing) {
+        
+        //flow check
+        string sol = P.getOptionValue("-sol", "");
+        if (sol == "") {
+            cout << "Error: Solution source must be provided" << endl;
+            exit(1);
+        }
+        log_file << "Running unit tests" << endl;
+        if (!flow_check(GA,sol)) {
+            log_file << "Flow check failed" << endl;
+            checked = false;
+        } else {
+            log_file << "Flow check successful" << endl;
+        }
+        
+        if (checked) cout << "Testing done." << endl;
+    }
+    
     cout << "Done." << endl;
+    log_file.close();
 }
 
