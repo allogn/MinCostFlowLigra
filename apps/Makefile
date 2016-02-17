@@ -1,10 +1,10 @@
-ifdef LONG
+#ifdef LONG
 INTT = -DLONG
-endif
+#endif
 
-ifdef EDGELONG
+#ifdef EDGELONG
 INTE = -DEDGELONG
-endif
+#endif
 
 #compilers
 ifdef CILK

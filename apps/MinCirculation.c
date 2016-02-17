@@ -21,8 +21,8 @@ bool isOutAdmissible(graph& GA, uintT node, uintT outEdge) {
     uintT neighbor = GA.V[node].getOutNeighbor(outEdge);
     double c_p = GA.getOutInfo(node,outEdge).weight + GA.p[neighbor] - GA.p[node];
     intE residual = GA.getOutInfo(node,outEdge).capacity - GA.getOutInfo(node,outEdge).flow;
-    if (testing)
-        if (testing) log_file << node << "->" << neighbor << " admissible: " << (c_p < 0 && residual > 0)
+    if (testing && verbose)
+        log_file << node << "->" << neighbor << " admissible: " << (c_p < 0 && residual > 0)
             << "(c_p = " << c_p << ", residual: " << residual << ")\n";
     return (c_p < 0 && residual > 0);
 }
@@ -30,14 +30,14 @@ bool isInverseAdmissible(graph& GA, uintT node, uintT inEdge) {
     uintT neighbor = GA.V[node].getInNeighbor(inEdge);
     double c_p = -GA.getInInfo(node,inEdge).weight + GA.p[neighbor] - GA.p[node];
     intE residual = GA.getInInfo(node,inEdge).flow - GA.getInInfo(node,inEdge).lower; //unit case!
-    if (testing) log_file << node << "<-" << neighbor << " admissible: " << (c_p < 0 && residual > 0)
+    if (testing && verbose) log_file << node << "<-" << neighbor << " admissible: " << (c_p < 0 && residual > 0)
         << "(c_p = " << c_p << ", residual: " << residual << ")\n";
     return (c_p < 0 && residual > 0);
 }
 
 void dfs(graph& GA, uintT* blockingFlow, uintT nodeId,
         const vertexSubset& excesses, const vertexSubset& deficits) {
-    if (testing) log_file << "  DFS " << nodeId << ":\n";
+    if (testing && verbose) log_file << "  DFS " << nodeId << ":\n";
     
     queue<uintT> node_queue;
     node_queue.push(nodeId);
@@ -50,7 +50,7 @@ void dfs(graph& GA, uintT* blockingFlow, uintT nodeId,
             //for each out edge check if it is admissible
             //if so - update distance and run dfs
             uintT neighbor = GA.V[node].getOutNeighbor(i);
-            if (isOutAdmissible(GA,node,i) && blockingFlow[neighbor] == INT_MAX
+            if (isOutAdmissible(GA,node,i) && blockingFlow[neighbor] == UINT_T_MAX
                     && !excesses.d[neighbor]) {
                 blockingFlow[neighbor] = node;
                 node_queue.push(neighbor);
@@ -65,7 +65,7 @@ void dfs(graph& GA, uintT* blockingFlow, uintT nodeId,
             //for each out edge check if it is admissible
             //if so - update distance and run dfs
             uintT neighbor = GA.V[node].getInNeighbor(i);
-            if (isInverseAdmissible(GA,node,i) && blockingFlow[neighbor] == INT_MAX
+            if (isInverseAdmissible(GA,node,i) && blockingFlow[neighbor] == UINT_T_MAX
                     && !excesses.d[neighbor]) {
                 blockingFlow[neighbor] = node;
                 node_queue.push(neighbor);
@@ -79,7 +79,7 @@ void dfs(graph& GA, uintT* blockingFlow, uintT nodeId,
 }
 
 void calculateExcesses(graph& GA, vertexSubset& excesses, vertexSubset& deficits) {
-    if (testing) log_file << "Calculate excesses..." << endl;
+    if (testing && verbose) log_file << "Calculate excesses..." << endl;
     
     uintT totalExcesses = 0;
     uintT totalDeficits = 0;
@@ -87,7 +87,7 @@ void calculateExcesses(graph& GA, vertexSubset& excesses, vertexSubset& deficits
     {
         excesses.d[i] = false;
         deficits.d[i] = false;
-        intE flow_sum = 0;
+        intT flow_sum = 0;
         for (uintT j = 0; j < GA.V[i].outDegree; j++) {
             flow_sum -= GA.getOutInfo(i,j).flow;
         }
@@ -107,16 +107,16 @@ void calculateExcesses(graph& GA, vertexSubset& excesses, vertexSubset& deficits
     excesses.m = totalExcesses;
     deficits.m = totalDeficits;
     
-    if (testing) log_file << "excesses: " ;
+    if (testing && verbose) log_file << "excesses: " ;
     for (uintT i = 0; i < GA.n; i++) {
         if (testing) log_file << i << ":" << excesses.d[i] << " ";
     }
-    if (testing) log_file << endl;
-    if (testing) log_file << "deficits: " ;
+    if (testing && verbose) log_file << endl;
+    if (testing && verbose) log_file << "deficits: " ;
     for (uintT i = 0; i < GA.n; i++) {
-        if (testing) log_file << i << ":" << deficits.d[i] << " ";
+        if (testing && verbose) log_file << i << ":" << deficits.d[i] << " ";
     }
-    if (testing) log_file << endl;
+    if (testing && verbose) log_file << endl;
 }
 
 void printGraph(graph GA) {
@@ -144,21 +144,21 @@ void printGraph(graph GA) {
 uintT raise_potentials(graph& GA, const double epsilon, 
     const vertexSubset& excesses, const vertexSubset& deficits) {
     
-    if (testing) log_file << "Raise potentials..." << endl;
+    if (testing && verbose) log_file << "Raise potentials..." << endl;
 
     //calculate shortest distances
-    intE* ShortestDistance = newA(intE,GA.n);
+    uintT* ShortestDistance = newA(unsigned long,GA.n);
     vertexSubset Frontier(GA.n);
     Frontier.toDense();
     for(uintT i = 0; i < GA.n; i++) Frontier.d[i] = excesses.d[i];
     Frontier.m = excesses.m;
 
     for (uintT i = 0; i < GA.n; i++) {
-        ShortestDistance[i] = INT_MAX;
+        ShortestDistance[i] = ULONG_MAX;
     }
 
     //calculate shortest path in Residual (!) graph
-    uintE length_to_deficit;
+    uintT length_to_deficit;
     while (!Frontier.isEmpty()) {
         vertexSubset nextIterSubset(GA.n);
         nextIterSubset.m = 0;
@@ -172,12 +172,9 @@ uintT raise_potentials(graph& GA, const double epsilon,
                     ShortestDistance[i] = 0;
                 }
 
-                //if a vertex is a deficit - terminate
                 if (deficits.d[i]) {
-                    nextIterSubset.del();
-                    length_to_deficit = ShortestDistance[i];
-                    gotDeficit = true;
-                    break;
+                    length_to_deficit = (length_to_deficit > ShortestDistance[i])?
+                        ShortestDistance[i] : length_to_deficit;
                 }
 
                 //iterate through residual edges to both directions!
@@ -185,18 +182,17 @@ uintT raise_potentials(graph& GA, const double epsilon,
                     if (GA.getOutInfo(i,j).flow < GA.getOutInfo(i,j).capacity) {
                         uintT neighbour = GA.V[i].getOutNeighbor(j);
 
-                        //length fucntion: l = ceil(c_p/epsilon) + 1
+                        //length function: l = floor(c_p/epsilon) + 1
                         double c_p = GA.getOutInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
-                        intE length = ceil(c_p/epsilon) + 1;
-                        if (length < 0) {
-                            cout << "error: negative length" << endl;
-                            exit(1);
-                        }
+                        uintT length = floor(c_p/epsilon) + 1;
 
-                        if (testing) log_file << "got new forward residual edge: " 
+                        if (testing && verbose) log_file << "got new forward residual edge: " 
                                 << i << "->" << neighbour << " length: " << length << endl;
-                        if (ShortestDistance[neighbour] > ShortestDistance[i] + length) {
-                            ShortestDistance[neighbour] = ShortestDistance[i] + length;
+                        
+                        uintT newDist = ShortestDistance[i] + length;
+                        if (newDist > 3*GA.n) { newDist = 3*GA.n; }
+                        if (ShortestDistance[neighbour] > newDist) {
+                            ShortestDistance[neighbour] = newDist;
                             if (!nextIterSubset.d[neighbour]) {
                                 nextIterSubset.d[neighbour] = true;
                                 nextIterSubset.m++;
@@ -209,19 +205,16 @@ uintT raise_potentials(graph& GA, const double epsilon,
                     if (GA.getInInfo(i,j).flow > GA.getInInfo(i,j).lower) {
                         uintT neighbour = GA.V[i].getInNeighbor(j);
 
-                        //length function: l = ceil(c_p/epsilon) + 1
+                        //length function: l = floor(c_p/epsilon) + 1
                         double c_p = - GA.getInInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
-                        intE length = ceil(c_p/epsilon) + 1;
-                        if (length < 0) {
-                            cout << "error: negative length" << endl;
-                            exit(1);
-                        }
+                        uintT length = floor(c_p/epsilon) + 1;
 
-                        if (testing) log_file << "got new backward residual edge: " << neighbour << "<-" 
+                        if (testing && verbose) log_file << "got new backward residual edge: " << neighbour << "<-" 
                                 << i << " length: " << length << " c_p:" << c_p << endl;
-
-                        if (ShortestDistance[neighbour] > ShortestDistance[i] + length) {
-                            ShortestDistance[neighbour] = ShortestDistance[i] + length;
+                        uintT newDist = ShortestDistance[i] + length;
+                        if (newDist > 3*GA.n) { newDist = 3*GA.n; }
+                        if (ShortestDistance[neighbour] > newDist) {
+                            ShortestDistance[neighbour] = newDist;
                             if (!nextIterSubset.d[neighbour]) {
                                 nextIterSubset.d[neighbour] = true;
                                 nextIterSubset.m++;
@@ -235,11 +228,13 @@ uintT raise_potentials(graph& GA, const double epsilon,
         Frontier.del();
         Frontier = nextIterSubset;
     }
-    if (testing) log_file << "Shortest path done. MaxLength = " << length_to_deficit << endl;
-    for (int i = 0; i < GA.n; i++) {
-        if (testing) log_file << i << ":" << ShortestDistance[i] << " ";
+    if (testing && verbose) {
+        log_file << "Shortest path done. MaxLength = " << length_to_deficit << endl;
+//        for (uintT i = 0; i < GA.n; i++) {
+//            log_file << i << ":" << ShortestDistance[i] << endl;
+//        }
+        log_file << endl;
     }
-    if (testing) log_file << endl;
 
     //raise potentials
     for (uintT i = 0; i < GA.n; i++) {
@@ -259,23 +254,23 @@ void raise_flows(graph& GA, const double epsilon,
     // a pointer to a parent together with total flow
     //terminate when a deficit reached
     uintT* blockingSearch = newA(uintT, GA.n);
-    for (uintT i = 0; i < GA.n; i++) blockingSearch[i] = INT_MAX;
+    for (uintT i = 0; i < GA.n; i++) blockingSearch[i] = UINT_T_MAX;
     for (uintT i = 0; i < GA.n; i++) {
         if (excesses.d[i]) {
             dfs(GA, blockingSearch, i, excesses, deficits);
         }
     }
-    if (testing) log_file << "Blocking flow array: ";
-    for (int i = 0; i < GA.n; i++) {
+    if (testing && verbose) log_file << "Blocking flow array: ";
+    for (uintT i = 0; i < GA.n; i++) {
         if (testing) log_file << i << ":" << blockingSearch[i] << " ";
     }
-    if (testing) log_file << endl;
-    if (testing) log_file << "blocking flow done." << endl;
+    if (testing && verbose) log_file << endl;
+    if (testing && verbose) log_file << "blocking flow done." << endl;
 
-    if (testing) log_file << "Paths: \n";
+    if (testing && verbose) log_file << "Paths: \n";
     //raise flow: back propagation from each deficit
     for (uintT i = 0; i < GA.n; i++) {
-        if (deficits.d[i] && blockingSearch[i] < INT_MAX) {
+        if (deficits.d[i] && blockingSearch[i] < UINT_T_MAX) {
             uintT curNode = i;
             while (excesses.d[curNode] != true) {
                 if (testing) log_file << curNode << "<-";
@@ -286,20 +281,20 @@ void raise_flows(graph& GA, const double epsilon,
     }
 
     //now raise flows
-    if (testing) log_file << "Raising flows... Path:" << endl;
+    if (testing && verbose) log_file << "Raising flows... Path:" << endl;
     for (uintT i = 0; i < GA.n; i++) {
         //iteration only through deficits only
-        if (deficits.d[i] && blockingSearch[i] < INT_MAX) {
+        if (deficits.d[i] && blockingSearch[i] < UINT_T_MAX) {
             uintT curNode = i;
             uintT nextNode;
             //go back through edges until excess is found (back propagation))
             //works only in case of unit flows possible
             while (excesses.d[curNode] != true) {
-                if (testing) log_file << "Node: " << curNode << ":" << endl;
+                if (testing && verbose) log_file << "Node: " << curNode << ":" << endl;
                 nextNode = blockingSearch[curNode];
                 //we don't know what edge is correct - so iterate 
                 //through accessible input and inverse input
-                int j = 0;
+                uintT j = 0;
                 while (j < GA.V[nextNode].outDegree &&
                         (!isOutAdmissible(GA, nextNode, j) ||
                         GA.V[nextNode].getOutNeighbor(j) != curNode)) {
@@ -313,7 +308,7 @@ void raise_flows(graph& GA, const double epsilon,
                         j++;
                     }
                     if (j == GA.V[nextNode].inDegree) {
-                        if (testing) log_file << "Error: missing edge in raising flows" << endl;
+                        if (testing && verbose) log_file << "Error: missing edge in raising flows" << endl;
                         exit(1);
                     }
                     GA.getInInfo(nextNode, j).flow--;
@@ -323,7 +318,7 @@ void raise_flows(graph& GA, const double epsilon,
 
                 curNode = nextNode;
             }
-            if (testing) {
+            if (testing && verbose) {
                 log_file << "Iteration finished. Final excess: " << curNode << endl;
                 printGraph(GA);
             }
@@ -336,8 +331,14 @@ void raise_flows(graph& GA, const double epsilon,
 void refine(graph& GA, const double epsilon) {
     
     if (testing) {
-        log_file << "New iteration: e = " << epsilon << endl;
+        if (verbose) log_file << "New iteration: e = " << epsilon << endl;
         printGraph(GA);
+        
+        //check feasibility of c_p
+        if (!is_feasible(-2*epsilon,GA)) {
+            cout << "Error: not a feasible flow" << endl;
+            exit(1);
+        }
     }
     
     //loop through arcs, saturate those with c_p less than 0 and add excesses
@@ -349,21 +350,26 @@ void refine(graph& GA, const double epsilon) {
             if (isOutAdmissible(GA,i,j)) {
                 GA.getOutInfo(i,j).flow = GA.getOutInfo(i,j).capacity;
             }
-            if (testing) log_file << "c_p("<< i << "," << neighbour << ") = " << c_p << endl;
+            if (testing && verbose) log_file << "c_p("<< i << "," << neighbour << ") = " << c_p << endl;
         }
     }
     //iterate through inverted edges
-    if (testing) log_file << "Inverted:" << endl;
+    if (testing && verbose) log_file << "Inverted:" << endl;
     for (uintT i = 0; i < GA.n; i++)
     {
         for (uintT j = 0; j < GA.V[i].inDegree; j++) {
             uintT neighbour = GA.V[i].getInNeighbor(j);
-            double c_p = GA.getInInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
+            double c_p = - GA.getInInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
             if (isInverseAdmissible(GA,i,j)) {
                 GA.getInInfo(i,j).flow = GA.getInInfo(i,j).lower;
             }
-            if (testing) log_file << "c_p("<< neighbour << "," << i << ") = " << c_p << endl;
+            if (testing && verbose) log_file << "c_p("<< neighbour << "," << i << ") = " << c_p << endl;
         }
+    }
+    
+    if (testing && !is_feasible(-epsilon,GA)) {
+        cout << "Error: not a feasible flow after saturating" << endl;
+        exit(1);
     }
     
     vertexSubset excesses(GA.n);
@@ -375,6 +381,12 @@ void refine(graph& GA, const double epsilon) {
     while (excesses.isEmpty() == false) {
         
         uintE target_id = raise_potentials(GA,epsilon,excesses,deficits);
+        
+        if (testing && !is_feasible(-epsilon,GA)) {
+            cout << "Error: not a feasible flow after raising potentials" << endl;
+            exit(1);
+        }
+        
         raise_flows(GA,epsilon,excesses, deficits);
     
         //recalculate excesses and deficits
@@ -383,23 +395,31 @@ void refine(graph& GA, const double epsilon) {
     
     deficits.del();
     excesses.del();
+    
+    if (testing) {
+        if (!is_flow(GA)) {
+            cout << "Error: not a flow" << endl;
+            exit(1);
+        };
+    }
 }
 
 void Compute(graph& GA, commandLine P) {
     
-    long source = P.getOptionLongValue("-s",0);
+    uintT source = P.getOptionLongValue("-s",0);
     char* iFile = P.getArgument(0);
     
     testing = P.getOptionIntValue("-test",0);
+    verbose = P.getOptionIntValue("-verbose",0);
     string log_filename = P.getOptionValue("-log","log.txt");
     if (testing) {
         log_file.open(log_filename.c_str());
     }
     
-    long n = GA.n;
-    long m = GA.m;
+    uintT n = GA.n;
+    uintT m = GA.m;
     
-    long target = P.getOptionLongValue("-t",n-1);
+    uintT target = P.getOptionLongValue("-t",n-1);
     
     //initialize ShortestPathLen to "infinity"
     {parallel_for(long i = 0; i<m; i++) {
@@ -421,9 +441,9 @@ void Compute(graph& GA, commandLine P) {
     GA.supply = supply;
     
     //getMaxWeight
-    long maxWeight = 0;
-    for(long i = 0; i < GA.n; i++) {
-        for (long j = 0; j < GA.V[i].getOutDegree(); j++) {
+    uintT maxWeight = 0;
+    for(uintT i = 0; i < GA.n; i++) {
+        for (uintT j = 0; j < GA.V[i].getOutDegree(); j++) {
             maxWeight = (maxWeight < GA.getOutInfo(i,j).weight) ? GA.getOutInfo(i,j).weight : maxWeight;
         }
     }
@@ -438,7 +458,6 @@ void Compute(graph& GA, commandLine P) {
     if (testing) printGraph(GA);
     bool checked = true;
     if (testing) {
-        
         //flow check
         string sol = P.getOptionValue("-sol", "");
         if (sol == "") {

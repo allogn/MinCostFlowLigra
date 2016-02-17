@@ -26,8 +26,10 @@ using namespace lemon;
 
 bool testing;
 ofstream log_file;
+bool verbose;
 
 #include "LemonCheck.h"
+#include "UnitTests.h"
 
 #endif	/* MINCIRCULATION_H */
 
