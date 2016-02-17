@@ -50,7 +50,7 @@ void dfs(graph& GA, uintT* blockingFlow, uintT nodeId,
             //for each out edge check if it is admissible
             //if so - update distance and run dfs
             uintT neighbor = GA.V[node].getOutNeighbor(i);
-            if (isOutAdmissible(GA,node,i) && blockingFlow[neighbor] == UINT_T_MAX
+            if (isOutAdmissible(GA,node,i) && blockingFlow[neighbor] == UINT_T_MAX/2
                     && !excesses.d[neighbor]) {
                 blockingFlow[neighbor] = node;
                 node_queue.push(neighbor);
@@ -65,7 +65,7 @@ void dfs(graph& GA, uintT* blockingFlow, uintT nodeId,
             //for each out edge check if it is admissible
             //if so - update distance and run dfs
             uintT neighbor = GA.V[node].getInNeighbor(i);
-            if (isInverseAdmissible(GA,node,i) && blockingFlow[neighbor] == UINT_T_MAX
+            if (isInverseAdmissible(GA,node,i) && blockingFlow[neighbor] == UINT_T_MAX/2
                     && !excesses.d[neighbor]) {
                 blockingFlow[neighbor] = node;
                 node_queue.push(neighbor);
@@ -154,11 +154,11 @@ uintT raise_potentials(graph& GA, const double epsilon,
     Frontier.m = excesses.m;
 
     for (uintT i = 0; i < GA.n; i++) {
-        ShortestDistance[i] = ULONG_MAX;
+        ShortestDistance[i] = UINT_T_MAX;
     }
 
     //calculate shortest path in Residual (!) graph
-    uintT length_to_deficit;
+    uintT length_to_deficit = UINT_T_MAX;
     while (!Frontier.isEmpty()) {
         vertexSubset nextIterSubset(GA.n);
         nextIterSubset.m = 0;
@@ -254,23 +254,25 @@ void raise_flows(graph& GA, const double epsilon,
     // a pointer to a parent together with total flow
     //terminate when a deficit reached
     uintT* blockingSearch = newA(uintT, GA.n);
-    for (uintT i = 0; i < GA.n; i++) blockingSearch[i] = UINT_T_MAX;
+    for (uintT i = 0; i < GA.n; i++) blockingSearch[i] = UINT_T_MAX/2;
     for (uintT i = 0; i < GA.n; i++) {
         if (excesses.d[i]) {
             dfs(GA, blockingSearch, i, excesses, deficits);
         }
     }
-    if (testing && verbose) log_file << "Blocking flow array: ";
-    for (uintT i = 0; i < GA.n; i++) {
-        if (testing) log_file << i << ":" << blockingSearch[i] << " ";
+    if (testing && verbose) {
+        log_file << "Blocking flow array: ";
+        for (uintT i = 0; i < GA.n; i++) {
+            log_file << i << ":" << blockingSearch[i] << " ";
+        }
+        log_file << endl;
+        log_file << "blocking flow done." << endl;
+        log_file << "Paths: \n";
     }
-    if (testing && verbose) log_file << endl;
-    if (testing && verbose) log_file << "blocking flow done." << endl;
-
-    if (testing && verbose) log_file << "Paths: \n";
+    
     //raise flow: back propagation from each deficit
     for (uintT i = 0; i < GA.n; i++) {
-        if (deficits.d[i] && blockingSearch[i] < UINT_T_MAX) {
+        if (deficits.d[i] && blockingSearch[i] < UINT_T_MAX/2) {
             uintT curNode = i;
             while (excesses.d[curNode] != true) {
                 if (testing) log_file << curNode << "<-";
@@ -284,7 +286,7 @@ void raise_flows(graph& GA, const double epsilon,
     if (testing && verbose) log_file << "Raising flows... Path:" << endl;
     for (uintT i = 0; i < GA.n; i++) {
         //iteration only through deficits only
-        if (deficits.d[i] && blockingSearch[i] < UINT_T_MAX) {
+        if (deficits.d[i] && blockingSearch[i] < UINT_T_MAX/2) {
             uintT curNode = i;
             uintT nextNode;
             //go back through edges until excess is found (back propagation))
@@ -412,9 +414,12 @@ void Compute(graph& GA, commandLine P) {
     testing = P.getOptionIntValue("-test",0);
     verbose = P.getOptionIntValue("-verbose",0);
     string log_filename = P.getOptionValue("-log","log.txt");
+    string profiling_file = P.getOptionValue("-profile","profile.txt");
     if (testing) {
         log_file.open(log_filename.c_str());
     }
+    
+    Timers timers;
     
     uintT n = GA.n;
     uintT m = GA.m;
@@ -450,10 +455,12 @@ void Compute(graph& GA, commandLine P) {
     
     double epsilon = maxWeight;
     
+    timers.total->start();
     while (epsilon > (double)1./n) {
         refine(GA, epsilon);
         epsilon = epsilon / 2.;
     }
+    timers.total->stop();
     
     if (testing) printGraph(GA);
     bool checked = true;
@@ -476,6 +483,8 @@ void Compute(graph& GA, commandLine P) {
     }
     
     cout << "Done." << endl;
+    cout << "Total time: " << timers.total->realTime() << endl;
+    timers.print(profiling_file);
     log_file.close();
 }
 

@@ -28,6 +28,7 @@ bool testing;
 ofstream log_file;
 bool verbose;
 
+#include "Timing.h"
 #include "LemonCheck.h"
 #include "UnitTests.h"
 
