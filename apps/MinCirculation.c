@@ -186,7 +186,7 @@ uintT raise_potentials(graph& GA, const double epsilon,
                         double c_p = GA.getOutInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
                         uintT length = floor(c_p/epsilon) + 1;
                         uintT newDist = ShortestDistance[i] + length;
-                        if (newDist > 3*GA.n) { newDist = 3*GA.n; }
+                        if (newDist > 3*GA.n) { newDist = 3*GA.n; } else 
                         if (ShortestDistance[neighbour] > newDist) {
                             ShortestDistance[neighbour] = newDist;
                             if (!nextIterSubset.d[neighbour]) {
@@ -205,8 +205,9 @@ uintT raise_potentials(graph& GA, const double epsilon,
                         double c_p = - GA.getInInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
                         uintT length = floor(c_p/epsilon) + 1;
                         uintT newDist = ShortestDistance[i] + length;
-                        if (newDist > 3*GA.n) { newDist = 3*GA.n; }
-                        if (ShortestDistance[neighbour] > newDist) {
+                        if (newDist >= 3*GA.n) { 
+                            newDist = 3*GA.n; 
+                        } else if (ShortestDistance[neighbour] > newDist) {
                             ShortestDistance[neighbour] = newDist;
                             if (!nextIterSubset.d[neighbour]) {
                                 nextIterSubset.d[neighbour] = true;
