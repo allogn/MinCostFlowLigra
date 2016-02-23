@@ -185,10 +185,6 @@ uintT raise_potentials(graph& GA, const double epsilon,
                         //length function: l = floor(c_p/epsilon) + 1
                         double c_p = GA.getOutInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
                         uintT length = floor(c_p/epsilon) + 1;
-
-                        if (testing && verbose) log_file << "got new forward residual edge: " 
-                                << i << "->" << neighbour << " length: " << length << endl;
-                        
                         uintT newDist = ShortestDistance[i] + length;
                         if (newDist > 3*GA.n) { newDist = 3*GA.n; }
                         if (ShortestDistance[neighbour] > newDist) {
@@ -208,9 +204,6 @@ uintT raise_potentials(graph& GA, const double epsilon,
                         //length function: l = floor(c_p/epsilon) + 1
                         double c_p = - GA.getInInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
                         uintT length = floor(c_p/epsilon) + 1;
-
-                        if (testing && verbose) log_file << "got new backward residual edge: " << neighbour << "<-" 
-                                << i << " length: " << length << " c_p:" << c_p << endl;
                         uintT newDist = ShortestDistance[i] + length;
                         if (newDist > 3*GA.n) { newDist = 3*GA.n; }
                         if (ShortestDistance[neighbour] > newDist) {
@@ -484,6 +477,15 @@ void Compute(graph& GA, commandLine P) {
     
     cout << "Done." << endl;
     cout << "Total time: " << timers.total->realTime() << endl;
+    
+    intT self_totalcost = 0;
+    for (uintT node = 0; node < GA.n; node++) {
+        for (uintT edge = 0; edge < GA.V[node].outDegree; edge++) {
+            edgeInfo ei = GA.getOutInfo(node,edge);
+            self_totalcost += ei.weight*ei.flow;
+        }
+    }
+    cout << "Total cost: " << self_totalcost << endl;
     
     timers.print(profiling_file, GA);
     log_file.close();
