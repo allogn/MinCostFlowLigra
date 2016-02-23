@@ -484,7 +484,8 @@ void Compute(graph& GA, commandLine P) {
     
     cout << "Done." << endl;
     cout << "Total time: " << timers.total->realTime() << endl;
-    timers.print(profiling_file);
+    
+    timers.print(profiling_file, GA);
     log_file.close();
 }
 

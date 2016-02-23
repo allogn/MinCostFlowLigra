@@ -17,11 +17,15 @@ struct AllTimes {
     Timer* total;
     
     AllTimes() {
-        total = new TimeReport("Total time:",f,false);
+        total = new Timer(false);
     }
     
-    void print(string filename) {
+    void print(string filename, graph& GA) {
         f.open(filename.c_str());
+        
+        f << "Nodes: " << GA.n << endl;
+        f << "Edges: " << GA.m << endl;
+        
         f << "Total time: " << total->realTime() << endl;
         f.close();
     }
