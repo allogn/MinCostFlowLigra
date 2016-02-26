@@ -24,7 +24,7 @@ using namespace std;
 #include <lemon/list_graph.h>
 #include <lemon/lgf_reader.h>
 #include <lemon/cost_scaling.h>
-
+#include <emmintrin.h>
 using namespace std;
 using namespace lemon;
 
@@ -33,6 +33,7 @@ ofstream log_file;
 bool verbose;
 
 #include "Timing.h"
+#include "NodeList.h"
 #include "LemonCheck.h"
 #include "UnitTests.h"
 

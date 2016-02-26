@@ -22,7 +22,7 @@ PCFLAGS = -fopenmp -O3 -DOPENMP $(INTT) $(INTE)
 
 else
 PCC = g++
-PCFLAGS = -O0 -g $(INTT) $(INTE)
+PCFLAGS = -O2 -g $(INTT) $(INTE)
 endif
 
 INC=-I../ligra

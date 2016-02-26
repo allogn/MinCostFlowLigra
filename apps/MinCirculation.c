@@ -17,21 +17,18 @@ struct PR_Vertex_F {
     }
 };
 
-bool isOutAdmissible(graph& GA, uintT node, uintT outEdge) {
+inline bool isOutAdmissible(graph& GA, uintT node, uintT outEdge) {
     uintT neighbor = GA.V[node].getOutNeighbor(outEdge);
-    double c_p = GA.getOutInfo(node,outEdge).weight + GA.p[neighbor] - GA.p[node];
-    intE residual = GA.getOutInfo(node,outEdge).capacity - GA.getOutInfo(node,outEdge).flow;
-    if (testing && verbose)
-        log_file << node << "->" << neighbor << " admissible: " << (c_p < 0 && residual > 0)
-            << "(c_p = " << c_p << ", residual: " << residual << ")\n";
+    edgeInfo ei = GA.getOutInfo(node,outEdge);
+    double c_p = ei.weight + GA.p[neighbor] - GA.p[node];
+    intE residual = ei.capacity - ei.flow;
     return (c_p < 0 && residual > 0);
 }
-bool isInverseAdmissible(graph& GA, uintT node, uintT inEdge) {
+inline bool isInverseAdmissible(graph& GA, uintT node, uintT inEdge) {
     uintT neighbor = GA.V[node].getInNeighbor(inEdge);
-    double c_p = -GA.getInInfo(node,inEdge).weight + GA.p[neighbor] - GA.p[node];
-    intE residual = GA.getInInfo(node,inEdge).flow - GA.getInInfo(node,inEdge).lower; //unit case!
-    if (testing && verbose) log_file << node << "<-" << neighbor << " admissible: " << (c_p < 0 && residual > 0)
-        << "(c_p = " << c_p << ", residual: " << residual << ")\n";
+    edgeInfo ei = GA.getInInfo(node,inEdge);
+    double c_p = -ei.weight + GA.p[neighbor] - GA.p[node];
+    intE residual = ei.flow - ei.lower; //unit case!
     return (c_p < 0 && residual > 0);
 }
 
@@ -141,87 +138,73 @@ void printGraph(graph GA) {
     }
 }
 
+inline int ftoi_sse1(float f)
+{
+    return _mm_cvtt_ss2si(_mm_load_ss(&f));     // SSE1 instructions for float->int
+}
+
 uintT raise_potentials(graph& GA, const double epsilon, 
     const vertexSubset& excesses, const vertexSubset& deficits) {
     
     if (testing && verbose) log_file << "Raise potentials..." << endl;
 
+    // boolean visited array
+    bool visited[GA.n];
+    
     //calculate shortest distances
-    uintT* ShortestDistance = newA(unsigned long,GA.n);
-    vertexSubset Frontier(GA.n);
-    Frontier.toDense();
-    for(uintT i = 0; i < GA.n; i++) Frontier.d[i] = excesses.d[i];
-    Frontier.m = excesses.m;
-
+    NodeList buckets(GA.n);
     for (uintT i = 0; i < GA.n; i++) {
-        ShortestDistance[i] = UINT_T_MAX;
+        visited[i] = false;
+        if (excesses.d[i]) {
+            buckets.addToBucket(0, i);
+        }
     }
 
     //calculate shortest path in Residual (!) graph
-    uintT length_to_deficit = UINT_T_MAX;
-    while (!Frontier.isEmpty()) {
-        vertexSubset nextIterSubset(GA.n);
-        nextIterSubset.m = 0;
-        nextIterSubset.toDense();
-        bool gotDeficit = false;
-        for (uintT i = 0; i < GA.n; i++) {
-            //if vertex in the active subset
-            if (Frontier.d[i]) {
-                //if source - zero distance by definition
-                if (excesses.d[i]) {
-                    ShortestDistance[i] = 0;
-                }
+    uintT length_to_deficit;
+    while (true) {
+        uintT i = buckets.getNearest();
+        
+        if (visited[i] == true) {
+            buckets.popNearest();
+            continue;
+        }
+        visited[i] = true;
+        buckets.saveAndPopNearest();
+        
+        if (deficits.d[i]) {
+            length_to_deficit = buckets.smallest_dist;
+            break;
+        }
 
-                if (deficits.d[i]) {
-                    length_to_deficit = (length_to_deficit > ShortestDistance[i])?
-                        ShortestDistance[i] : length_to_deficit;
-                }
-
-                //iterate through residual edges to both directions!
-                for (uintT j = 0; j < GA.V[i].outDegree; j++) {
-                    if (GA.getOutInfo(i,j).flow < GA.getOutInfo(i,j).capacity) {
-                        uintT neighbour = GA.V[i].getOutNeighbor(j);
-
-                        //length function: l = floor(c_p/epsilon) + 1
-                        double c_p = GA.getOutInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
-                        uintT length = floor(c_p/epsilon) + 1;
-                        uintT newDist = ShortestDistance[i] + length;
-                        if (newDist >= length_to_deficit) { 
-                            newDist = length_to_deficit; 
-                        } else if (ShortestDistance[neighbour] > newDist) {
-                            ShortestDistance[neighbour] = newDist;
-                            if (!nextIterSubset.d[neighbour]) {
-                                nextIterSubset.d[neighbour] = true;
-                                nextIterSubset.m++;
-                            }
-                        }
-                    }
-                }
-                //inverted edges (see G_f condition)
-                for (uintT j = 0; j < GA.V[i].inDegree; j++) {
-                    if (GA.getInInfo(i,j).flow > GA.getInInfo(i,j).lower) {
-                        uintT neighbour = GA.V[i].getInNeighbor(j);
-
-                        //length function: l = floor(c_p/epsilon) + 1
-                        double c_p = - GA.getInInfo(i,j).weight + GA.p[neighbour] - GA.p[i];
-                        uintT length = floor(c_p/epsilon) + 1;
-                        uintT newDist = ShortestDistance[i] + length;
-                        if (newDist >= length_to_deficit) { 
-                            newDist = length_to_deficit; 
-                        } else if (ShortestDistance[neighbour] > newDist) {
-                            ShortestDistance[neighbour] = newDist;
-                            if (!nextIterSubset.d[neighbour]) {
-                                nextIterSubset.d[neighbour] = true;
-                                nextIterSubset.m++;
-                            }
-                        }
-                    }
+        //iterate through residual edges in both directions!
+        for (uintT j = 0; j < GA.V[i].outDegree; j++) {
+            uintT neighbour = GA.V[i].getOutNeighbor(j);
+            if (! visited[neighbour]) { //@todo change if statements (with edge) and maybe faster
+                edgeInfo ei = GA.getOutInfo(i,j);
+                if (ei.flow < ei.capacity) {
+                    //length function: l = floor(c_p/epsilon) + 1
+                    double c_p = ei.weight + GA.p[neighbour] - GA.p[i];
+                    uintT length = floor(c_p/epsilon) + 1;
+                    uintT newDist = buckets.smallest_dist + length;
+                    buckets.addToBucket(newDist, neighbour);
                 }
             }
         }
-        if (gotDeficit) break;
-        Frontier.del();
-        Frontier = nextIterSubset;
+        //inverted edges (see G_f condition)
+        for (uintT j = 0; j < GA.V[i].inDegree; j++) {
+            uintT neighbour = GA.V[i].getInNeighbor(j);
+            if (!visited[neighbour]) {
+                edgeInfo ei = GA.getInInfo(i,j);
+                if (ei.flow > ei.lower) {
+                    //length function: l = floor(c_p/epsilon) + 1
+                    double c_p = - ei.weight + GA.p[neighbour] - GA.p[i];
+                    uintT length = floor(c_p/epsilon) + 1;
+                    uintT newDist = buckets.smallest_dist + length;
+                    buckets.addToBucket(newDist, neighbour);
+                }
+            }
+        }
     }
     if (testing && verbose) {
         log_file << "Shortest path done. MaxLength = " << length_to_deficit << endl;
@@ -229,16 +212,26 @@ uintT raise_potentials(graph& GA, const double epsilon,
 //            log_file << i << ":" << ShortestDistance[i] << endl;
 //        }
         log_file << endl;
-    }
-
-    //raise potentials
-    for (uintT i = 0; i < GA.n; i++) {
-        if (ShortestDistance[i] < length_to_deficit) {
-            GA.p[i] += (length_to_deficit - ShortestDistance[i])*epsilon;
+        
+        bool t = test_shortest_path(GA, buckets, epsilon, excesses, deficits);
+        log_file << "Testing Shortest Path: " << t << endl;
+        if (!t) {
+            cout << "Shortest Path test fail" << endl;
+            exit(1);
         }
     }
 
-    free(ShortestDistance);
+    //delete everything else from buckets without moving to "visited"
+    buckets.clearBuckets(visited);
+    
+    //raise potentials for all visited vertices
+    while (buckets.visited != NULL) {
+        uintT i = buckets.getIdVisited();
+        uintT dist = buckets.getDistVisited();
+        buckets.popVisited();
+        GA.p[i] += (length_to_deficit - dist)*epsilon;
+    }
+    
 }
 
 void raise_flows(graph& GA, const double epsilon, 
